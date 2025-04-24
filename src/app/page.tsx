@@ -16,8 +16,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { setCookie, getCookie, deleteCookie } from 'cookies-next';
-
 // Define the type for target coordinates
 interface Target {
   x: number;
@@ -101,7 +99,7 @@ export default function SpotQuest() {
   const [wrongClickCooldown, setWrongClickCooldown] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const { toast } = useToast();
-  const [username, setUsername] = useState<string | undefined>(undefined);
+  const [username, setUsername] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [endTime, setEndTime] = useState<number | null>(null);
   const [showHint, setShowHint] = useState(false);
@@ -111,12 +109,15 @@ export default function SpotQuest() {
 
   // Get the current cookie state of the game
   const [foundCharacters, setFoundCharacters] = useState<boolean[]>(() => {
-    const cookie = getCookie('foundCharacters');
-    if (cookie) {
+    if (typeof window === 'undefined') {
+      return Array(images.length).fill(false);
+    }
+    const storedCharacters = localStorage.getItem('foundCharacters');
+    if (storedCharacters) {
       try {
-        return JSON.parse(cookie);
+        return JSON.parse(storedCharacters);
       } catch (e) {
-        console.error('Error parsing cookie:', e);
+        console.error('Error parsing foundCharacters from localStorage:', e);
         return Array(images.length).fill(false);
       }
     }
@@ -125,12 +126,18 @@ export default function SpotQuest() {
 
   // Handle username input at the beginning of the game
   const [showUsernameInput, setShowUsernameInput] = useState(() => {
-    return !getCookie('username');
+    if (typeof window === 'undefined') {
+      return true;
+    }
+    return !localStorage.getItem('username');
   });
 
-  // Initialize username from cookie on component mount
+  // Initialize username from localStorage on component mount
   useEffect(() => {
-    const storedUsername = getCookie('username')?.toString();
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const storedUsername = localStorage.getItem('username');
     if (storedUsername) {
       setUsername(storedUsername);
     }
@@ -143,14 +150,14 @@ export default function SpotQuest() {
     }
   }, [username]);
 
-  // Set the cookie value every time the currentImageIndex changes
+  // Set the localStorage value every time the currentImageIndex changes
   useEffect(() => {
-    setCookie('currentImageIndex', String(currentImageIndex));
+    localStorage.setItem('currentImageIndex', String(currentImageIndex));
   }, [currentImageIndex]);
 
-  // Set the cookie value every time the foundCharacters changes
+  // Set the localStorage value every time the foundCharacters changes
   useEffect(() => {
-    setCookie('foundCharacters', JSON.stringify(foundCharacters));
+    localStorage.setItem('foundCharacters', JSON.stringify(foundCharacters));
   }, [foundCharacters]);
 
   // Function to handle clicks on the image
@@ -241,20 +248,20 @@ export default function SpotQuest() {
 
   const handleStartGame = (name: string) => {
     setUsername(name);
-    setCookie('username', name);
+    localStorage.setItem('username', name);
     setShowUsernameInput(false);
     setStartTime(Date.now());
   };
 
   const handleRestartGame = () => {
-    deleteCookie('username');
-    deleteCookie('foundCharacters');
-    deleteCookie('currentImageIndex');
+    localStorage.removeItem('username');
+    localStorage.removeItem('foundCharacters');
+    localStorage.removeItem('currentImageIndex');
 
     setCurrentImageIndex(0);
     setWrongClickCooldown(false);
     setGameOver(false);
-    setUsername(undefined);
+    setUsername(null);
     setStartTime(null);
     setEndTime(null);
     setShowHint(false);
