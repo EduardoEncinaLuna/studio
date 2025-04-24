@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -13,53 +13,145 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+import { setCookie, getCookie, deleteCookie } from 'cookies-next';
 
 // Define the type for target coordinates
 interface Target {
   x: number;
   y: number;
   radius: number;
-  found: boolean;
 }
 
-const images = [
+// Define the type for images
+interface GameImage {
+  src: string;
+  characterRef: string;
+  hint: string;
+  target: Target;
+}
+
+const images: GameImage[] = [
   {
-    src: "https://picsum.photos/800/600",
-    targets: [
-      { x: 100, y: 150, radius: 20, found: false },
-      { x: 250, y: 300, radius: 20, found: false },
-      { x: 400, y: 450, radius: 20, found: false },
-      { x: 550, y: 150, radius: 20, found: false },
-      { x: 700, y: 300, radius: 20, found: false },
-    ],
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level1.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "He loves wearing red and white",
+    target: { x: 685, y: 260, radius: 30 },
   },
   {
-    src: "https://picsum.photos/800/601",
-    targets: [
-      { x: 120, y: 170, radius: 20, found: false },
-      { x: 270, y: 320, radius: 20, found: false },
-      { x: 420, y: 470, radius: 20, found: false },
-      { x: 570, y: 170, radius: 20, found: false },
-      { x: 720, y: 320, radius: 20, found: false },
-    ],
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level2.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "You can find him near the sea",
+    target: { x: 530, y: 760, radius: 30 },
+  },
+  {
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level3.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "He is watching the planes",
+    target: { x: 780, y: 640, radius: 30 },
+  },
+  {
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level4.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "He loves music and is on the right side",
+    target: { x: 220, y: 780, radius: 30 },
+  },
+  {
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level5.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "Between the clowns and the tents",
+    target: { x: 420, y: 700, radius: 30 },
+  },
+  {
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level6.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "He is buying some melons",
+    target: { x: 370, y: 390, radius: 30 },
+  },
+  {
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level7.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "He is near a tower",
+    target: { x: 340, y: 690, radius: 30 },
+  },
+  {
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level8.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "You can find him on the top",
+    target: { x: 510, y: 340, radius: 30 },
+  },
+  {
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level9.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "He is enjoying a day at the beach with his family",
+    target: { x: 800, y: 820, radius: 30 },
+  },
+  {
+    src: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/level10.png",
+    characterRef: "https://raw.githubusercontent.com/manuelod93/spotquest/main/assets/waldo.png",
+    hint: "He is near the river on the left side of the image",
+    target: { x: 150, y: 680, radius: 30 },
   },
 ];
 
 export default function SpotQuest() {
-  const [imageIndex, setImageIndex] = useState(0);
-  const [targets, setTargets] = useState<Target[]>(images[imageIndex].targets);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [wrongClickCooldown, setWrongClickCooldown] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const { toast } = useToast();
+  const [username, setUsername] = useState<string | undefined>(undefined);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [endTime, setEndTime] = useState<number | null>(null);
+  const [showHint, setShowHint] = useState(false);
+  const hintTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [imageBlur, setImageBlur] = useState(false);
+  const blurTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    if (gameOver) {
-      toast({
-        title: "Congratulations!",
-        description: "You found all the spots!",
-      });
+  // Get the current cookie state of the game
+  const [foundCharacters, setFoundCharacters] = useState<boolean[]>(() => {
+    const cookie = getCookie('foundCharacters');
+    if (cookie) {
+      try {
+        return JSON.parse(cookie);
+      } catch (e) {
+        console.error('Error parsing cookie:', e);
+        return Array(images.length).fill(false);
+      }
     }
-  }, [gameOver, toast]);
+    return Array(images.length).fill(false);
+  });
+
+  // Handle username input at the beginning of the game
+  const [showUsernameInput, setShowUsernameInput] = useState(() => {
+    return !getCookie('username');
+  });
+
+  // Initialize username from cookie on component mount
+  useEffect(() => {
+    const storedUsername = getCookie('username')?.toString();
+    if (storedUsername) {
+      setUsername(storedUsername);
+    }
+  }, []);
+
+  // Initialize the timer when the component mounts, if the game has started
+  useEffect(() => {
+    if (username) {
+      setStartTime(Date.now());
+    }
+  }, [username]);
+
+  // Set the cookie value every time the currentImageIndex changes
+  useEffect(() => {
+    setCookie('currentImageIndex', String(currentImageIndex));
+  }, [currentImageIndex]);
+
+  // Set the cookie value every time the foundCharacters changes
+  useEffect(() => {
+    setCookie('foundCharacters', JSON.stringify(foundCharacters));
+  }, [foundCharacters]);
 
   // Function to handle clicks on the image
   const handleClick = (event: React.MouseEvent<HTMLImageElement>) => {
@@ -68,61 +160,108 @@ export default function SpotQuest() {
     const offsetX = event.nativeEvent.offsetX;
     const offsetY = event.nativeEvent.offsetY;
 
-    const targetIndex = targets.findIndex((target) => {
-      const distance = Math.sqrt(
-        Math.pow(offsetX - target.x, 2) + Math.pow(offsetY - target.y, 2)
-      );
-      return distance <= target.radius && !target.found;
-    });
+    const target = images[currentImageIndex].target;
 
-    if (targetIndex !== -1) {
+    const distance = Math.sqrt(
+      Math.pow(offsetX - target.x, 2) + Math.pow(offsetY - target.y, 2)
+    );
+
+    if (distance <= target.radius) {
       // Correct click
-      const newTargets = [...targets];
-      newTargets[targetIndex] = { ...newTargets[targetIndex], found: true };
-      setTargets(newTargets);
+      setFoundCharacters((prev) => {
+        const newFoundCharacters = [...prev];
+        newFoundCharacters[currentImageIndex] = true;
+        return newFoundCharacters;
+      });
+      toast({
+        title: "Character Found!",
+        description: "Proceeding to the next image...",
+      });
     } else {
       // Wrong click
       setWrongClickCooldown(true);
+      setImageBlur(true);
       toast({
         title: "Wrong Spot!",
-        description: "Try again in 10 seconds.",
+        description: "Try again in 5 seconds.",
         variant: "destructive",
       });
+      blurTimeout.current = setTimeout(() => {
+        setImageBlur(false);
+      }, 5000);
       setTimeout(() => {
         setWrongClickCooldown(false);
-      }, 10000);
+      }, 5000);
     }
   };
 
   // Function to advance to the next image
   const nextImage = () => {
-    if (imageIndex < images.length - 1) {
-      setImageIndex(imageIndex + 1);
-      setTargets(images[imageIndex + 1].targets); // Reset targets for the new image
+    clearTimeout(hintTimeout.current as NodeJS.Timeout);
+    setShowHint(false);
+    if (currentImageIndex < images.length - 1) {
+      setCurrentImageIndex(currentImageIndex + 1);
     } else {
       // Game Over
+      setEndTime(Date.now());
       setGameOver(true);
     }
   };
 
   // Check if all targets are found
   useEffect(() => {
-    if (targets.every((target) => target.found)) {
-      if (imageIndex < images.length - 1) {
-        toast({
-          title: "All spots found!",
-          description: "Proceeding to the next image...",
-        });
-        setTimeout(() => {
-          nextImage();
-        }, 2000); // Delay before showing next image
-      } else {
-        setGameOver(true);
-      }
+    if (foundCharacters.every((found) => found)) {
+      setEndTime(Date.now());
+      setGameOver(true);
+    } else if (foundCharacters[currentImageIndex]) {
+      setTimeout(() => {
+        nextImage();
+      }, 2000); // Delay before showing next image
+    } else {
+      // Set a timeout to show the hint after 60 seconds
+      hintTimeout.current = setTimeout(() => {
+        setShowHint(true);
+      }, 60000);
     }
-  }, [targets, imageIndex, nextImage, toast]);
 
-  const currentImage = images[imageIndex];
+    return () => {
+      clearTimeout(hintTimeout.current as NodeJS.Timeout);
+    };
+  }, [foundCharacters, currentImageIndex]);
+
+  const currentImage = images[currentImageIndex];
+
+  const formatTime = (milliseconds: number | null): string => {
+    if (!milliseconds) return "00:00";
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleStartGame = (name: string) => {
+    setUsername(name);
+    setCookie('username', name);
+    setShowUsernameInput(false);
+    setStartTime(Date.now());
+  };
+
+  const handleRestartGame = () => {
+    deleteCookie('username');
+    deleteCookie('foundCharacters');
+    deleteCookie('currentImageIndex');
+
+    setCurrentImageIndex(0);
+    setWrongClickCooldown(false);
+    setGameOver(false);
+    setUsername(undefined);
+    setStartTime(null);
+    setEndTime(null);
+    setShowHint(false);
+    clearTimeout(hintTimeout.current as NodeJS.Timeout);
+    setShowUsernameInput(true);
+    setFoundCharacters(Array(images.length).fill(false));
+  };
 
   return (
     <SidebarProvider>
@@ -132,7 +271,14 @@ export default function SpotQuest() {
             <SidebarTrigger className="md:hidden" />
           </SidebarHeader>
           <SidebarContent>
-            <p className="text-sm">Find all spots to continue!</p>
+            {username ? (
+              <p className="text-sm">Welcome, {username}!</p>
+            ) : (
+              <p className="text-sm">Enter your name to start!</p>
+            )}
+            {!gameOver && (
+              <p className="text-sm">Find all characters to win!</p>
+            )}
           </SidebarContent>
           <SidebarFooter>
             <p className="text-xs text-muted-foreground">
@@ -140,40 +286,57 @@ export default function SpotQuest() {
             </p>
           </SidebarFooter>
         </Sidebar>
-        <div className="flex-1 p-4 md:p-8">
-          {!gameOver ? (
-            <div>
+        <div className="flex-1 p-4 md:p-8 flex flex-col items-center justify-center">
+          {showUsernameInput ? (
+            <div className="flex flex-col items-center justify-center">
+              <Label htmlFor="username" className="text-lg font-semibold mb-2">
+                Enter your name:
+              </Label>
+              <Input
+                id="username"
+                placeholder="Your Name"
+                className="w-64 mb-4"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const name = (e.target as HTMLInputElement).value;
+                    if (name.trim() !== '') {
+                      handleStartGame(name);
+                    } else {
+                      toast({
+                        title: "Please enter a valid name",
+                        variant: "destructive",
+                      });
+                    }
+                  }
+                }}
+              />
+              <Button onClick={() => {
+                const name = document.getElementById("username") as HTMLInputElement | null;
+                if (name && name.value.trim() !== '') {
+                  handleStartGame(name.value);
+                } else {
+                  toast({
+                    title: "Please enter a valid name",
+                    variant: "destructive",
+                  });
+                }
+              }}>Start Game</Button>
+            </div>
+          ) : !gameOver ? (
+            <div className="flex flex-col items-center">
               <h1 className="text-2xl font-bold mb-4">
-                Image {imageIndex + 1}
+                Level {currentImageIndex + 1}/10
               </h1>
               <div className="relative">
                 <Image
                   src={currentImage.src}
-                  alt={`Spot ${imageIndex + 1}`}
+                  alt={`Spot ${currentImageIndex + 1}`}
                   width={800}
                   height={600}
-                  className="rounded-lg shadow-md"
+                  className={cn("rounded-lg shadow-md transition-all duration-500", imageBlur ? "blur-lg" : "")}
                   onClick={handleClick}
                   style={{ cursor: wrongClickCooldown ? "not-allowed" : "crosshair" }}
                 />
-                {targets.map(
-                  (target, index) =>
-                    target.found && (
-                      <div
-                        key={index}
-                        style={{
-                          position: "absolute",
-                          left: target.x - target.radius,
-                          top: target.y - target.radius,
-                          width: target.radius * 2,
-                          height: target.radius * 2,
-                          borderRadius: "50%",
-                          border: "2px solid #A7D1AB",
-                          pointerEvents: "none", // Prevent interference with clicks
-                        }}
-                      />
-                    )
-                )}
                 {wrongClickCooldown && (
                   <div
                     style={{
@@ -192,17 +355,41 @@ export default function SpotQuest() {
                       cursor: "not-allowed",
                     }}
                   >
-                    <p>Wait...</p>
+                    <p>Image hidden...</p>
                   </div>
                 )}
+              </div>
+
+              <div className="mt-4 flex items-center">
+                <div className="w-48 h-48 relative rounded-lg shadow-md mr-4">
+                  <Image
+                    src={currentImage.characterRef}
+                    alt="Character Reference"
+                    fill
+                    style={{ objectFit: "contain" }}
+                    className="rounded-lg"
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <p className="text-gray-700">Hint: {showHint ? currentImage.hint : "Look carefully..."}</p>
+                  {showHint ? null : <p className="text-xs text-muted-foreground">Hint will appear in 1 minute</p>}
+                </div>
               </div>
             </div>
           ) : (
             <div className="text-center">
-              <h2 className="text-3xl font-bold mb-4">Congratulations!</h2>
-              <p className="text-gray-700">You found all the spots!</p>
+              <h2 className="text-3xl font-bold mb-4">Congratulations {username}!</h2>
+              <p className="text-gray-700">You found all the characters!</p>
+              {startTime && endTime && (
+                <p className="text-gray-700">
+                  Your time: {formatTime(endTime - startTime)}
+                </p>
+              )}
             </div>
           )}
+          <Button variant="outline" className="mt-4" onClick={handleRestartGame}>
+            Restart Game
+          </Button>
         </div>
       </div>
     </SidebarProvider>
