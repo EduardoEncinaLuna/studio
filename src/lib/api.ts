@@ -3,7 +3,6 @@ export async function checkTarget(
   x: number,
   y: number
 ): Promise<boolean> {
-  console.log(x, y)
   const response = await fetch("/api/check-target", {
     method: "POST",
     headers: {
@@ -11,7 +10,6 @@ export async function checkTarget(
     },
     body: JSON.stringify({ imageId, x, y }),
   });
-  console.log(response);
 
   const data = await response.json();
   return data.success;

@@ -6,16 +6,16 @@ type PositionPayload = {
   y: number;
 };
 const targets = [
-  { imageId: 1, x:280, y: 282, radius: 30 },
-  { imageId: 2, x: 280, y: 282, radius: 30 },
-  { imageId: 3, x: 280, y: 282, radius: 30 },
-  { imageId: 4, x: 280, y: 282, radius: 30 },
-  { imageId: 5, x: 280, y: 282, radius: 30 },
-  { imageId: 6, x: 280, y: 282, radius: 30 },
-  { imageId: 7, x: 280, y: 282, radius: 30 },
-  { imageId: 8, x: 280, y: 282, radius: 30 },
-  { imageId: 9, x: 280, y: 282, radius: 30 },
-  { imageId: 10, x: 280, y: 282, radius: 30 },
+  { imageId: 1, x:556, y: 277, radius: 30 },
+  { imageId: 2, x: 23, y: 111, radius: 30 },
+  { imageId: 3, x: 1049, y: 571, radius: 30 },
+  { imageId: 4, x: 1422, y: 453, radius: 30 },
+  { imageId: 5, x: 303, y: 417, radius: 30 },
+  { imageId: 6, x: 1377, y: 780, radius: 30 },
+  { imageId: 7, x: 392, y: 252, radius: 30 },
+  { imageId: 8, x: 1115, y: 282, radius: 30 },
+  { imageId: 9, x: 935, y: 271, radius: 30 },
+  { imageId: 10, x: 142, y: 782, radius: 30 },
 ];
 
 export async function POST(req: NextRequest) {

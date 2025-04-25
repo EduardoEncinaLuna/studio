@@ -1,6 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useState, useEffect, useRef, useCallback } from "react";
+import useSound from 'use-sound';
+import Confetti from "react-confetti";
+import { useWindowSize } from "usehooks-ts";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -8,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { checkTarget } from "@/lib/api";
+import { Volume2, VolumeX } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
 // Define the type for target coordinates
@@ -22,56 +27,57 @@ interface GameImage { src: string; hint: string; id: number; }
 
 const images: GameImage[] = [
   {
-    src: "/assets/d12.png",
+    src: "/assets/Danny2.png",
     id: 1,
-    hint: "He loves wearing red and white",
+    hint: "Seeling something 🤔",
   },
   {
-    src: "/assets/level2.png",
+    src: "/assets/Maykol2.png",
     id: 2,
-    hint: "You can find him near the sea",
+    hint: "Search for doors 🚪",
   },
   {
-    src: "/assets/level3.png",
+    src: "/assets/Eduardo2.png",
     id: 3,
-    hint: "He is watching the planes",
+    hint: "Find the fish! 🐟",
   },
   {
-    src: "/assets/level4.png",
+    src: "/assets/Alvaro2.png",
     id: 4,
-    hint: "He loves music and is on the right side",
+    hint: "Enjoying the show 🪓",
   },
   {
-    src: "/assets/level5.png",
+    src: "/assets/Lucas2.png",
     id: 5,
-    hint: "Between the clowns and the tents",
+    hint: "He was thirsty 🍺",
   },
   {
-    src: "/assets/level6.png",
+    src: "/assets/Jose2.png",
     id: 6,
-    hint: "He is buying some melons",
+    hint: "Near the shore ☁",
   },
   {
-    src: "/assets/level7.png",
+    src: "/assets/Maria2.png",
     id: 7,
-    hint: "He is near a tower",
+    hint: "Trees 🌳",
   },
   {
-    src: "/assets/level8.png",
+    src: "/assets/Adriana2.png",
     id: 8,
-    hint: "You can find him on the top",
+    hint: "Having fun :) 🎢",
   },
   {
-    src: "/assets/level9.png",
+    src: "/assets/Clara2.png",
     id: 9,
-    hint: "He is enjoying a day at the beach with his family",
+    hint: "Hippo 🦛",
   },
   {
-    src: "/assets/level10.png",
+    src: "/assets/Steven2.png",
     id: 10,
-    hint: "He is near the river on the left side of the image",
+    hint: "❓",
   },
 ];
+
 
 export default function Game() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -86,11 +92,32 @@ export default function Game() {
   const [imageBlur, setImageBlur] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const blurTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const [zoom, setZoom] = useState(1);
   const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 });
   // Get the current cookie state of the game
   const [foundCharacters, setFoundCharacters] = useState<boolean[]>(Array(images.length).fill(false));
+  const { width, height } = useWindowSize();
+  const [music, setMusic] = useState("/assets/bgmh.mp3");
+
+  // State to control mute/unmute
+  const [isMuted, setIsMuted] = useState(false);
+// Add background music to the game
+  // Load the sound file
+  const [play, { pause }] = useSound(music, {
+    loop: true,
+    volume: 0.02, // Lower volume
+  });
+  // useEffect to play the sound when the component loads
+  useEffect(() => {
+    play();
+    return () => {
+      pause();
+    };
+  }, [play, pause]);
+
+  const handleImageLoad = () => setImageLoaded(true);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -102,6 +129,35 @@ export default function Game() {
           console.error('Error parsing foundCharacters from localStorage:', e);
         }
       }
+    }
+  }, []);
+
+  // useEffect to mute/unmute the sound when isMuted changes
+  useEffect(() => {
+    if (isMuted) {
+      pause();
+    } else {
+      play();
+    }
+  }, [isMuted, play, pause]);
+
+
+  // Load startTime from localStorage on component mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // Retrieve startTime from localStorage
+      const storedStartTime = localStorage.getItem('startTime');
+      if (storedStartTime) {
+        // Parse and set startTime from localStorage
+        setStartTime(parseInt(storedStartTime, 10));
+      }
+    }
+  }, []);
+  // Load the currentImageIndex from local storage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedCurrentImageIndex = localStorage.getItem('currentImageIndex');
+      if (storedCurrentImageIndex) setCurrentImageIndex(parseInt(storedCurrentImageIndex, 10));
     }
   }, []);
 
@@ -124,9 +180,15 @@ export default function Game() {
   }, []);
 
   useEffect(() => {
+    //If there is a username we set the start time
     if (username) {
-      setStartTime(Date.now());
+      const storedStartTime = localStorage.getItem('startTime');
+      if (!storedStartTime) {
+        setStartTime(Date.now());
+        localStorage.setItem('startTime', String(startTime));
+      }
     }
+
   }, [username]);
 
   useEffect(() => {
@@ -140,33 +202,16 @@ export default function Game() {
 
   const handleImageClick = async (event: React.MouseEvent<HTMLImageElement>) => {
     if (wrongClickCooldown || gameOver || isLoading) return;
-
-    setIsLoading(true);
-
     const offsetX = event.nativeEvent.offsetX;
     const offsetY = event.nativeEvent.offsetY;
-
-    if (!event.ctrlKey) {
-      // Zoom in on click
-      const imageRect = event.currentTarget.getBoundingClientRect();
-      const zoomPointX = offsetX;
-      const zoomPointY = offsetY;
-
-      setZoomCenter({ x: zoomPointX, y: zoomPointY });
-      const zoomClick = zoom + 0.4;
-      setZoom(zoomClick > 4 ? 1 : zoomClick);
-      return;
-    }
-
+    setIsLoading(true);
     let isCorrect = false;
+
     try {
-        isCorrect = await checkTarget(images[currentImageIndex].id, offsetX, offsetY);
+      isCorrect = await checkTarget(images[currentImageIndex].id, offsetX, offsetY);
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
-
-
-    console.log(isCorrect)
 
     if (isCorrect) {
 
@@ -175,6 +220,7 @@ export default function Game() {
         newFoundCharacters[currentImageIndex] = true;
         return newFoundCharacters;
       });
+      resetZoom();
       toast({
         title: "Character Found!",
         description: "Proceeding to the next image...",
@@ -209,16 +255,19 @@ export default function Game() {
     setZoomCenter({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY });
   };
 
+
   // Function to advance to the next image
   const nextImage = () => {
+    setImageBlur(true)
     clearTimeout(hintTimeout.current as NodeJS.Timeout);
     setShowHint(false);
     if (currentImageIndex < images.length - 1) {
-      setCurrentImageIndex(currentImageIndex + 1);
+      setCurrentImageIndex(currentImageIndex + 1)
     } else {
       // Game Over
       setEndTime(Date.now());
       setGameOver(true);
+      setMusic("/assets/bgmv.mp3");
     }
   };
 
@@ -227,13 +276,19 @@ export default function Game() {
     if (foundCharacters.every((found) => found)) {
       setEndTime(Date.now());
       setGameOver(true);
+      setMusic("/assets/bgmv.mp3");
     } else if (foundCharacters[currentImageIndex]) {
       nextImage(); // Delay before showing next image
     } else {
-      // Set a timeout to show the hint after 60 seconds
-      hintTimeout.current = setTimeout(() => {
-        setShowHint(true);
-      }, 60000);
+      if(imageLoaded){
+        setImageLoaded(false)
+        setImageBlur(false)
+      }
+
+      // // Set a timeout to show the hint after 60 seconds
+      // hintTimeout.current = setTimeout(() => {
+      //   setShowHint(true);
+      // }, 60000);
     }
 
     return () => {
@@ -255,12 +310,15 @@ export default function Game() {
     localStorage.setItem('username', name);
     setShowUsernameInput(false);
     setStartTime(Date.now());
+    setMusic("/assets/bgm.mp3");
   };
 
   const handleRestartGame = () => {
     localStorage.removeItem('username');
     localStorage.removeItem('foundCharacters');
     localStorage.removeItem('currentImageIndex');
+    localStorage.removeItem('startTime');
+    setMusic("/assets/bgmh.mp3");
 
     setCurrentImageIndex(0);
     setWrongClickCooldown(false);
@@ -276,24 +334,58 @@ export default function Game() {
   const resetZoom = () => setZoom(1);
 
   return (
-    <div className="flex h-screen bg-beige justify-center">
-      <div className="flex-1 p-4 md:p-8 flex flex-col items-center justify-center w-full">
+    <div
+      className="flex h-screen justify-center"
+      style={{
+        backgroundImage: `url('/assets/Bg.png')`,
+        backgroundSize: 'cover',
+        backgroundRepeat: 'no-repeat',
+        overflow: 'none',
+        overflowY: 'hidden',
+      }}
+    >
+      <div
+        className="absolute inset-0 bg-black opacity-50"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          zIndex: 1, // Ensure it's below the game content
+        }}
+      />
+
+      <div className="flex-1 p-4 md:p-8 flex flex-col items-center justify-center w-full text-white font-bold" style={{ zIndex: 2 }}>
+        {/* Mute/Unmute button */}
+        <Button
+          onClick={() => setIsMuted(!isMuted)}
+          className="absolute bottom-4 right-4 z-50 rounded-full p-2"
+          variant="ghost"
+        >
+          {isMuted ? (
+            <VolumeX className="h-6 w-6" />
+          ) : (
+            <Volume2 className="h-6 w-6" />
+          )}
+        </Button>
+
+
+
 
 
         {showUsernameInput ? (
+          // Button to redirect to /demo, only visible when the game has not started
+          // The game is started if startTime is not null
           <div className="flex flex-col items-center justify-center">
             <Label htmlFor="username" className="text-lg font-semibold mb-2">
               Enter your name:
             </Label>
 
-            <p className="text-xs text-muted-foreground">
-              Use Ctrl + left click to select the character
-            </p>
-
             <Input
               id="username"
               placeholder="Your Name"
-              className="w-64 mb-4"
+              className="w-64 mb-4 font-semibold text-black"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   const name = (e.target as HTMLInputElement).value;
@@ -308,47 +400,64 @@ export default function Game() {
                 }
               }}
             />
-            <Button onClick={() => {
-              const name = document.getElementById("username") as HTMLInputElement | null;
-              if (name && name.value.trim() !== '') {
-                handleStartGame(name.value);
-              } else {
-                toast({
-                  title: "Please enter a valid name",
-                  variant: "destructive",
-                });
-              }
-            }}>Start Game</Button>
+            <div className="flex flex-row w-full justify-between mb-4">
+              <Button onClick={() => {
+                const name = document.getElementById("username") as HTMLInputElement | null;
+                if (name && name.value.trim() !== '') {
+                  handleStartGame(name.value);
+                } else {
+                  toast({
+                    title: "Please enter a valid name",
+                    variant: "destructive",
+                  });
+                }
+              }} variant="secondary">Start Game</Button>
+              {!startTime && (
+                <Button asChild className="text-black">
+                  <Link href="/demo">See how to play</Link>
+                </Button>)}
+            </div>
           </div>
         ) : !gameOver ? (
           <div className="flex flex-col items-center">
-            <h1 className="text-2xl font-bold mb-4">
+            <h1 className="text-2xl mb-4">
               Level {currentImageIndex + 1}/10
             </h1>
-            <div className="mt-4 flex flex-col items-center">
-              <p className="text-gray-700">Hint: {showHint ? currentImage.hint : "Look carefully..."}</p>
-              <p className="">Request a hint before! - 30 sec penalty or wait a whole minute :) </p>
-              <Button variant="outline" className="mt-2" onClick={() => {
-                // Wrong click
-                setWrongClickCooldown(true);
-                setImageBlur(true);
-                toast({
-                  title: "Wrong Spot!",
-                  description: "Try again in 5 seconds.",
-                  variant: "destructive",
-                });
-                blurTimeout.current = setTimeout(() => {
-                  setImageBlur(false);
-                }, 30000);
-                setTimeout(() => {
-                  setWrongClickCooldown(false);
-                  setShowHint(true)
-                }, 30000);
-              }}>
-                Show Hint
-              </Button>
+            <div className="mt-4 flex flex-col items-center w-full">
+              <div className="flex flex-row w-full justify-between mb-4">
+                <Button
+                  variant="secondary"
+                  className="mr-2 p-4"
+                  onClick={() => {
+                    if (currentImageIndex != 9) {
+                      setWrongClickCooldown(true);
+                      setImageBlur(true);
+                      toast({
+                        title: "Desperate?",
+                        description: "Wait 30sec :)",
+                        variant: "destructive",
+                      });
+                      blurTimeout.current = setTimeout(() => {
+                        setImageBlur(false);
+                      }, 30000);
+                      setTimeout(() => {
+                        setWrongClickCooldown(false);
+                        setShowHint(true);
+                      }, 30000);
+                    }
+                    else {
+                      setShowHint(true);
+                    }
+                  }}
+                >
+                  Show Hint
+                </Button>
+                {showHint && <p className="mb-4">Hint: {currentImage.hint}</p>}
+                {!showUsernameInput && <Button variant="secondary" className="p-4" onClick={handleRestartGame}>Restart Game</Button>}
+              </div>
+
             </div>
-            <div className="relative flex justify-center items-center w-[90vw] h-[80vh] overflow-hidden">
+            <div className={"relative flex justify-center items-center w-[1500px] overflow-hidden rounded-lg border-[5px] border-solid border-light-beige" + ((currentImageIndex) < 5 ? " h-[941px]" : " h-[1026px]")}>
               <Image
                 src={currentImage.src}
                 alt={`Spot ${currentImageIndex + 1}`}
@@ -357,7 +466,7 @@ export default function Game() {
                 style={{
                   objectFit: "contain",
                   transform: `scale(${zoom})`,
-                  transition: "transform 0.3s ease-in-out",
+                  transition: "transform 0.3s ease-in-out border 0.3s ease-in-out",
                   transformOrigin: `${zoomCenter.x}px ${zoomCenter.y}px`,
                   cursor: wrongClickCooldown ? "not-allowed" : "crosshair",
                 }}
@@ -367,6 +476,7 @@ export default function Game() {
                 onDoubleClick={resetZoom}
                 onWheel={handleWheel}
                 onMouseMove={handleMouseMove}
+                onLoad={handleImageLoad}
               />
               {wrongClickCooldown && (
                 <div
@@ -387,7 +497,7 @@ export default function Game() {
                     cursor: "not-allowed",
                   }}
                 >
-                  <p>"Waiting... :("</p>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 </div>
               )}
               {isLoading && (
@@ -416,16 +526,19 @@ export default function Game() {
           </div>
         ) : (
           <div className="text-center">
-            <h2 className="text-3xl font-bold mb-4">Congratulations {username}!</h2>
-            <p className="text-gray-700">You found all the characters!</p>
+            <h2 className="text-3xl mb-4">Congratulations {username}!</h2>
+            <p className="">You found all the characters!</p>
             {startTime && endTime && (
-              <p className="text-gray-700">
+              <p className="">
                 Your time: {formatTime(endTime - startTime)}
               </p>
             )}
+            <Button variant="secondary" className="p-4" onClick={handleRestartGame}>Restart Game</Button>
           </div>
         )}
-       {!showUsernameInput && <Button variant="outline" className="mt-4" onClick={handleRestartGame}>Restart Game</Button>}
+        {gameOver && (
+          <Confetti width={width} height={height} />
+        )}
       </div>
     </div>
 
