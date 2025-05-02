@@ -97,6 +97,10 @@ export default function Game() {
   const [zoom, setZoom] = useState(1);
   const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 });
   // Get the current cookie state of the game
+  // code validation
+  const [code, setCode] = useState<string>(""); // New state for the code input
+  const [codeError, setCodeError] = useState<boolean>(false); // New state for the code error message
+
   const [foundCharacters, setFoundCharacters] = useState<boolean[]>(Array(images.length).fill(false));
   const { width, height } = useWindowSize();
   const [music, setMusic] = useState("/assets/bgmh.mp3");
@@ -201,14 +205,18 @@ export default function Game() {
   }, [foundCharacters]);
 
   const handleImageClick = async (event: React.MouseEvent<HTMLImageElement>) => {
+    // Get the width of the image container to use it in the API call
+    const imageWidth = event.currentTarget.offsetWidth;
+
     if (wrongClickCooldown || gameOver || isLoading) return;
     const offsetX = event.nativeEvent.offsetX;
     const offsetY = event.nativeEvent.offsetY;
     setIsLoading(true);
     let isCorrect = false;
 
+
     try {
-      isCorrect = await checkTarget(images[currentImageIndex].id, offsetX, offsetY);
+      isCorrect = await checkTarget(images[currentImageIndex].id, offsetX, offsetY, imageWidth);
     } finally {
       setIsLoading(false);
     }
@@ -280,10 +288,9 @@ export default function Game() {
     } else if (foundCharacters[currentImageIndex]) {
       nextImage(); // Delay before showing next image
     } else {
-      if(imageLoaded){
-        setImageLoaded(false)
-        setImageBlur(false)
-      }
+      setTimeout(() => {
+        setImageBlur(false);
+       }, 2000);
 
       // // Set a timeout to show the hint after 60 seconds
       // hintTimeout.current = setTimeout(() => {
@@ -305,13 +312,35 @@ export default function Game() {
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const handleStartGame = (name: string) => {
-    setUsername(name);
-    localStorage.setItem('username', name);
-    setShowUsernameInput(false);
-    setStartTime(Date.now());
-    setMusic("/assets/bgm.mp3");
+  const handleStartGame = async (name: string, code: string) => {
+    // API call to validate the code
+    const response = await fetch("/api/validate-code", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    // Get response
+    const data = await response.json();
+
+    // Validate if it was success
+    if (response.ok && data.valid) {
+      // Start the game
+      setUsername(name);
+      localStorage.setItem('username', name);
+      setShowUsernameInput(false);
+      setStartTime(Date.now());
+      setMusic("/assets/bgm.mp3");
+      setCodeError(false)
+    } else {
+      // Show error
+      setCodeError(true);
+    }
   };
+
+
 
   const handleRestartGame = () => {
     localStorage.removeItem('username');
@@ -356,7 +385,7 @@ export default function Game() {
         }}
       />
 
-      <div className="flex-1 p-4 md:p-8 flex flex-col items-center justify-center w-full text-white font-bold" style={{ zIndex: 2 }}>
+      <div className="game-container flex-1 p-4 md:p-8 flex flex-col items-center justify-center w-full text-white font-bold" style={{ zIndex: 2 }}>
         {/* Mute/Unmute button */}
         <Button
           onClick={() => setIsMuted(!isMuted)}
@@ -369,11 +398,6 @@ export default function Game() {
             <Volume2 className="h-6 w-6" />
           )}
         </Button>
-
-
-
-
-
         {showUsernameInput ? (
           // Button to redirect to /demo, only visible when the game has not started
           // The game is started if startTime is not null
@@ -381,7 +405,6 @@ export default function Game() {
             <Label htmlFor="username" className="text-lg font-semibold mb-2">
               Enter your name:
             </Label>
-
             <Input
               id="username"
               placeholder="Your Name"
@@ -390,7 +413,7 @@ export default function Game() {
                 if (e.key === 'Enter') {
                   const name = (e.target as HTMLInputElement).value;
                   if (name.trim() !== '') {
-                    handleStartGame(name);
+                    handleStartGame(name, code);
                   } else {
                     toast({
                       title: "Please enter a valid name",
@@ -400,21 +423,40 @@ export default function Game() {
                 }
               }}
             />
+            
+            {/* New input for the code */}
+            <Label htmlFor="code" className="text-lg font-semibold mb-2">
+              Enter the code:
+            </Label>
+            <Input
+              id="code"
+              type="text"
+              placeholder="Code"
+              className="w-64 mb-4 font-semibold text-black"
+              value={code}
+              onChange={(e) => setCode(e.target.value)} // Update the code state
+            />
+            {!startTime && (
+                 // If there is a code error, show it
+                codeError && <p className="text-red-500">Invalid code</p>
+              )}
             <div className="flex flex-row w-full justify-between mb-4">
               <Button onClick={() => {
                 const name = document.getElementById("username") as HTMLInputElement | null;
                 if (name && name.value.trim() !== '') {
-                  handleStartGame(name.value);
+                  handleStartGame(name.value, code);
                 } else {
                   toast({
                     title: "Please enter a valid name",
                     variant: "destructive",
                   });
                 }
-              }} variant="secondary">Start Game</Button>
+              }} variant="secondary">Start Game</Button> {/* New start game button */}
+              
+              {/* Button to redirect to /demo, only visible when the game has not started */}
               {!startTime && (
                 <Button asChild className="text-black">
-                  <Link href="/demo">See how to play</Link>
+                  <Link href="/instructions">See how to play</Link>
                 </Button>)}
             </div>
           </div>
@@ -457,7 +499,7 @@ export default function Game() {
               </div>
 
             </div>
-            <div className={"relative flex justify-center items-center w-[1500px] overflow-hidden rounded-lg border-[5px] border-solid border-light-beige" + ((currentImageIndex) < 5 ? " h-[941px]" : " h-[1026px]")}>
+            <div className={"container relative flex justify-center items-center w-[1500px] overflow-hidden rounded-lg border-[5px] border-solid border-light-beige" + ((currentImageIndex) < 5 ? "" : " second-image")}>
               <Image
                 src={currentImage.src}
                 alt={`Spot ${currentImageIndex + 1}`}
@@ -470,7 +512,7 @@ export default function Game() {
                   transformOrigin: `${zoomCenter.x}px ${zoomCenter.y}px`,
                   cursor: wrongClickCooldown ? "not-allowed" : "crosshair",
                 }}
-                className={cn("rounded-lg shadow-md transition-all duration-500", imageBlur ? "blur-lg" : "")}
+                className={cn("rounded-lg shadow-md transition-all duration-500", imageBlur ? "blur-xl" : "")}
 
                 onClick={handleImageClick}
                 onDoubleClick={resetZoom}
